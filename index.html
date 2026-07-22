@@ -378,7 +378,8 @@ const FALLBACK_DATA = {
    ============================================================ */
 
 const CLIENT_ID = "d17c388c-6e3b-4961-92a5-6e86adc7cdd3";
-const FILE_NAME = "Manutenção_e_Gastos_Frota.xlsx";
+const FILE_NAME = "Manutenção e Gastos Frota.xlsx";
+const FOLDER_PATH = "CONTROLE FROTA"; // pasta dentro do OneDrive onde o arquivo está; deixe "" se estiver na raiz
 const SHEET_NAME = "DASHBOARD";
 
 // Faixas exatas da planilha usadas pelo painel (não precisam mudar
@@ -438,20 +439,34 @@ async function graphFetch(url, token){
   return res.json();
 }
 
+async function findWorkbookItemId(token){
+  // 1) tenta achar direto pelo caminho (pasta + nome) — mais rápido e confiável
+  const fullPath = FOLDER_PATH ? `${FOLDER_PATH}/${FILE_NAME}` : FILE_NAME;
+  try{
+    const direct = await graphFetch(
+      `https://graph.microsoft.com/v1.0/me/drive/root:/${fullPath.split('/').map(encodeURIComponent).join('/')}`,
+      token
+    );
+    if(direct && direct.id) return direct.id;
+  }catch(e){ /* não achou nesse caminho, segue pra busca */ }
+
+  // 2) fallback: busca pelo nome em todo o OneDrive
+  const search = await graphFetch(
+    `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(FILE_NAME.replace(/\.[^/.]+$/,''))}')`,
+    token
+  );
+  if(search.value && search.value.length > 0){
+    const match = search.value.find(f => f.name === FILE_NAME) || search.value[0];
+    return match.id;
+  }
+  throw new Error(`Não encontrei "${FILE_NAME}" no OneDrive desta conta. Verifique se o arquivo está no OneDrive (não em SharePoint/Teams) e se o nome está exatamente igual.`);
+}
+
 async function syncFromExcel(){
   try{
     setSyncStatus('', 'sincronizando…');
     const token = await getGraphToken();
-
-    // localizar o arquivo pelo nome no OneDrive do usuário conectado
-    const search = await graphFetch(
-      `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(FILE_NAME)}')`,
-      token
-    );
-    if(!search.value || search.value.length === 0){
-      throw new Error("Planilha não encontrada no OneDrive desta conta");
-    }
-    const itemId = search.value[0].id;
+    const itemId = await findWorkbookItemId(token);
     const base = `https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/workbook/worksheets('${SHEET_NAME}')/range(address='`;
 
     const [kpiRange, tableRange, statusRange] = await Promise.all([
@@ -466,7 +481,7 @@ async function syncFromExcel(){
     setSyncStatus('live', `conectado — ao vivo (${liveData.lastUpdate.toLocaleTimeString('pt-BR')})`);
   }catch(err){
     console.error(err);
-    setSyncStatus('error', 'erro ao sincronizar — mostrando último dado conhecido');
+    setSyncStatus('error', err.message || 'erro ao sincronizar — mostrando último dado conhecido');
   }
 }
 
