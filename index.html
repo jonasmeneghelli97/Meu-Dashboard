@@ -491,6 +491,8 @@ async function syncFromExcel(){
 function excelSerialToDate(v){
   if(v instanceof Date) return v;
   if(typeof v === 'string'){
+    const br = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if(br) return new Date(Number(br[3]), Number(br[2])-1, Number(br[1]));
     const d = new Date(v);
     if(!isNaN(d)) return d;
   }
@@ -520,16 +522,16 @@ function parseGraphRanges(kpiRows, tableRows, statusRows, abastRows){
 
   // Abastecimentos individuais (com data) — linha de cabeçalho é a primeira do range
   const fills = abastRows.slice(1)
-    .filter(r => typeof r[0] === 'number' && r[1] && r[2])
+    .filter(r => r[1] && r[2] && (r[4] != null) && (r[6] != null))
     .map(r => ({
       placa: r[1],
       date: excelSerialToDate(r[2]),
       km: r[3],
-      litros: r[4],
-      valorLitro: r[5],
-      valorTotal: r[6]
+      litros: Number(r[4]),
+      valorLitro: Number(r[5]),
+      valorTotal: Number(r[6])
     }))
-    .filter(f => f.date);
+    .filter(f => f.date && !isNaN(f.date.getTime()));
 
   return {kpis, vehicles, statusBreakdown, fills};
 }
