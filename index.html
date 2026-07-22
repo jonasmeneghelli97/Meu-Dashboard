@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frota — Painel de Abastecimento e Manutenção</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171a;
+    --panel:#1b1f23;
+    --panel-alt:#20252a;
+    --border:#2c3238;
+    --text:#eef1f3;
+    --muted:#8b939c;
+    --accent:#f2a13b;
+    --accent-dim:#7a5a2a;
+    --ok:#4caf6e;
+    --warn:#e0b23e;
+    --danger:#e0604e;
+    --mono:'IBM Plex Mono', monospace;
+    --cond:'Barlow Condensed', sans-serif;
+    --sans:'Inter', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse at top left, rgba(242,161,59,0.05), transparent 45%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+    padding:28px 24px 60px;
+  }
+  a{color:var(--accent);}
+
+  /* ---- Header strip, like an instrument cluster ---- */
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:16px;
+    border-bottom:2px solid var(--border);
+    padding-bottom:18px;
+    margin-bottom:22px;
+  }
+  .brand{display:flex; align-items:center; gap:14px;}
+  .brand .mark{
+    width:44px;height:44px;border-radius:6px;
+    background:linear-gradient(160deg, var(--accent), #c9791f);
+    display:flex;align-items:center;justify-content:center;
+    font-size:22px;
+    box-shadow:0 0 0 3px rgba(242,161,59,0.12);
+  }
+  h1{
+    font-family:var(--cond);
+    font-weight:700;
+    font-size:26px;
+    letter-spacing:0.03em;
+    text-transform:uppercase;
+    margin:0;
+    line-height:1.1;
+  }
+  .subtitle{
+    font-size:12.5px;
+    color:var(--muted);
+    margin-top:4px;
+  }
+  .header-controls{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  select, button{
+    font-family:var(--sans);
+    font-size:13px;
+    border-radius:5px;
+    border:1px solid var(--border);
+    background:var(--panel-alt);
+    color:var(--text);
+    padding:9px 12px;
+    cursor:pointer;
+  }
+  button.primary{
+    background:var(--accent);
+    color:#1a1305;
+    font-weight:600;
+    border:none;
+  }
+  button.primary:hover{ filter:brightness(1.08); }
+  button:disabled{ opacity:0.5; cursor:not-allowed; }
+  .sync-status{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+  .dot.live{background:var(--ok); box-shadow:0 0 6px var(--ok);}
+  .dot.error{background:var(--danger); box-shadow:0 0 6px var(--danger);}
+
+  /* ---- KPI odometer cards ---- */
+  .kpi-row{
+    display:grid;
+    grid-template-columns:repeat(6,1fr);
+    gap:12px;
+    margin-bottom:22px;
+  }
+  .kpi{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:16px 16px 14px;
+    position:relative;
+    overflow:hidden;
+  }
+  .kpi::after{
+    content:"";
+    position:absolute;
+    left:0;right:0;bottom:0;
+    height:3px;
+    background:linear-gradient(90deg, var(--accent), transparent 75%);
+  }
+  .kpi .label{
+    font-family:var(--cond);
+    font-size:11.5px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+    margin-bottom:10px;
+  }
+  .kpi .value{
+    font-family:var(--mono);
+    font-size:24px;
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:0.01em;
+  }
+  .kpi .value small{ font-size:13px; color:var(--muted); font-weight:500; margin-left:3px;}
+  .kpi .foot{ font-size:11px; color:var(--muted); margin-top:8px; }
+  .kpi.danger .value{ color:var(--danger); }
+  .kpi.danger::after{ background:linear-gradient(90deg, var(--danger), transparent 75%); }
+
+  /* ---- Main grid ---- */
+  .main-grid{
+    display:grid;
+    grid-template-columns:1.6fr 1fr;
+    gap:16px;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:18px 18px 20px;
+  }
+  .panel h2{
+    font-family:var(--cond);
+    font-size:15px;
+    letter-spacing:0.05em;
+    text-transform:uppercase;
+    margin:0 0 14px;
+    color:var(--text);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .panel h2 span.hint{
+    font-family:var(--sans);
+    text-transform:none;
+    letter-spacing:0;
+    font-size:11.5px;
+    color:var(--muted);
+  }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  thead th{
+    text-align:left;
+    font-family:var(--cond);
+    font-weight:600;
+    letter-spacing:0.03em;
+    text-transform:uppercase;
+    font-size:11px;
+    color:var(--muted);
+    border-bottom:1px solid var(--border);
+    padding:0 8px 8px;
+  }
+  tbody td{
+    padding:9px 8px;
+    border-bottom:1px solid rgba(255,255,255,0.04);
+    font-family:var(--mono);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  tbody td.plate{ font-family:var(--sans); font-weight:600; letter-spacing:0.03em; }
+  tbody tr:hover td{ background:rgba(255,255,255,0.02); }
+  tfoot td{
+    padding:10px 8px 4px;
+    border-top:2px solid var(--border);
+    font-family:var(--mono);
+    font-weight:600;
+    font-variant-numeric:tabular-nums;
+  }
+  .status-chip{
+    display:inline-block;
+    padding:3px 9px;
+    border-radius:20px;
+    font-family:var(--sans);
+    font-size:11px;
+    font-weight:600;
+    letter-spacing:0.02em;
+  }
+  .status-ok{ background:rgba(76,175,110,0.15); color:var(--ok); }
+  .status-warn{ background:rgba(224,178,62,0.15); color:var(--warn); }
+  .status-danger{ background:rgba(224,96,78,0.15); color:var(--danger); }
+
+  /* right column stacked panels */
+  .side-stack{ display:flex; flex-direction:column; gap:16px; }
+
+  /* donut */
+  .donut-wrap{ display:flex; align-items:center; gap:18px; }
+  .legend{ font-size:12.5px; display:flex; flex-direction:column; gap:8px; }
+  .legend-item{ display:flex; align-items:center; gap:8px; }
+  .legend-swatch{ width:10px;height:10px;border-radius:2px; }
+  .legend .n{ font-family:var(--mono); color:var(--muted); margin-left:auto; padding-left:10px;}
+
+  /* top spenders bars */
+  .bar-row{ margin-bottom:10px; }
+  .bar-row .bar-label{
+    display:flex; justify-content:space-between;
+    font-size:12px; margin-bottom:4px;
+  }
+  .bar-row .bar-label .v{ font-family:var(--mono); color:var(--muted); }
+  .bar-track{ background:var(--panel-alt); border-radius:4px; height:7px; overflow:hidden; }
+  .bar-fill{ height:100%; background:linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius:4px; }
+
+  footer{
+    margin-top:26px;
+    font-size:11.5px;
+    color:var(--muted);
+    text-align:center;
+  }
+
+  @media (max-width: 980px){
+    .kpi-row{ grid-template-columns:repeat(2,1fr); }
+    .main-grid{ grid-template-columns:1fr; }
+  }
+  @media (max-width: 560px){
+    .kpi-row{ grid-template-columns:1fr 1fr; }
+    table{ font-size:11.5px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark">🚛</div>
+    <div>
+      <h1>Painel da Frota</h1>
+      <div class="subtitle">Abastecimento &amp; manutenção — 25 veículos cadastrados</div>
+    </div>
+  </div>
+  <div class="header-controls">
+    <select id="monthFilter">
+      <option value="Todos">Filtrar por mês: Todos</option>
+    </select>
+    <button class="primary" id="connectBtn">Conectar planilha (Microsoft)</button>
+    <button id="refreshBtn" disabled title="Conecte-se primeiro">Atualizar agora</button>
+    <div class="sync-status"><span class="dot" id="syncDot"></span><span id="syncText">dados locais (exemplo) — não conectado</span></div>
+  </div>
+</header>
+
+<section class="kpi-row" id="kpiRow">
+  <!-- filled by JS -->
+</section>
+
+<section class="main-grid">
+  <div class="panel">
+    <h2>Resumo por veículo <span class="hint">fonte: aba DASHBOARD</span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Placa</th><th>KM atual</th><th>Diesel (L)</th><th>Diesel (R$)</th>
+          <th>Arla (R$)</th><th>Outros (R$)</th><th>Total (R$)</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="vehicleRows"></tbody>
+      <tfoot id="vehicleFoot"></tfoot>
+    </table>
+  </div>
+
+  <div class="side-stack">
+    <div class="panel">
+      <h2>Status de manutenção</h2>
+      <div class="donut-wrap">
+        <svg id="donut" width="120" height="120" viewBox="0 0 120 120"></svg>
+        <div class="legend" id="statusLegend"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Maiores gastos por veículo</h2>
+      <div id="topSpenders"></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Última atualização: <span id="lastUpdate">—</span> · Dados sincronizados a partir do Excel Online via Microsoft Graph
+</footer>
+
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script>
+/* ============================================================
+   1) DADOS LOCAIS (snapshot atual da planilha, usado como
+   ponto de partida e como fallback caso a conexão não esteja
+   configurada ainda). Depois de conectar com a Microsoft, estes
+   valores são substituídos pelos dados ao vivo do Excel Online.
+   ============================================================ */
+const FALLBACK_DATA = {
+  kpis: {
+    gastoTotal: 36952.97,
+    totalLitros: 5822,
+    precoMedio: 6.299032978357952,
+    numAbastecimentos: 15,
+    frotaCadastrada: 25,
+    manutencoesVencidas: 1
+  },
+  vehicles: [
+    {placa:'BBT2D73', km:581778, dieselL:612, dieselRS:3794.4, arlaRS:0, outrosRS:280, totalRS:4074.4, status:'OK'},
+    {placa:'MLJ9G39', km:228817, dieselL:168, dieselRS:1041.6, arlaRS:0, outrosRS:0, totalRS:1041.6, status:'OK'},
+    {placa:'CLU7G61', km:935955, dieselL:399, dieselRS:2593.5, arlaRS:0, outrosRS:0, totalRS:2593.5, status:'OK'},
+    {placa:'TPS6I47', km:1049600, dieselL:783, dieselRS:5473.17, arlaRS:0, outrosRS:0, totalRS:5473.17, status:'OK'},
+    {placa:'SXR8E78', km:213867, dieselL:452, dieselRS:2802.4, arlaRS:0, outrosRS:0, totalRS:2802.4, status:'A preencher'},
+    {placa:'ATN8G26', km:1036920, dieselL:290, dieselRS:1798, arlaRS:0, outrosRS:0, totalRS:1798, status:'OK'},
+    {placa:'MLA4J24', km:1599000, dieselL:525, dieselRS:3015, arlaRS:200, outrosRS:0, totalRS:3215, status:'A preencher'},
+    {placa:'TPM6D11', km:83776, dieselL:353, dieselRS:2188.6, arlaRS:0, outrosRS:0, totalRS:2188.6, status:'A preencher'},
+    {placa:'RHN0D82', km:395462, dieselL:370, dieselRS:2438.3, arlaRS:0, outrosRS:0, totalRS:2438.3, status:'Trocar agora'},
+    {placa:'RYY9A32', km:317282, dieselL:421, dieselRS:2610.2, arlaRS:0, outrosRS:0, totalRS:2610.2, status:'A preencher'},
+    {placa:'TPW3D28', km:107195, dieselL:600, dieselRS:4074, arlaRS:0, outrosRS:0, totalRS:4074, status:'A preencher'},
+    {placa:'QII0D58', km:641846, dieselL:302, dieselRS:1872.4, arlaRS:0, outrosRS:0, totalRS:1872.4, status:'OK'},
+    {placa:'MKX4A76', km:1784610, dieselL:447, dieselRS:2771.4, arlaRS:0, outrosRS:0, totalRS:2771.4, status:'OK'}
+  ],
+  statusBreakdown: [
+    {label:'Em dia', qty:13, color:'var(--ok)'},
+    {label:'Vencido', qty:1, color:'var(--danger)'},
+    {label:'Em atenção', qty:0, color:'var(--warn)'},
+    {label:'Sem KM informado', qty:11, color:'var(--muted)'}
+  ],
+  lastUpdate: null
+};
+
+/* ============================================================
+   2) CONEXÃO AO VIVO COM O EXCEL ONLINE (Microsoft Graph)
+   ------------------------------------------------------------
+   Este bloco usa MSAL.js (biblioteca oficial da Microsoft) com
+   um "public client" — ou seja, SEM segredo de app exposto no
+   site, seguro para um repositório público no GitHub Pages.
+
+   PARA ATIVAR (uma única vez):
+   1. Acesse https://entra.microsoft.com → "App registrations"
+      → "New registration".
+   2. Nome: "Painel Frota". Tipo de conta: só sua organização/
+      conta pessoal, o que já vier selecionado serve.
+   3. Em "Redirect URI", escolha plataforma "Single-page
+      application (SPA)" e cole a URL do seu GitHub Pages,
+      ex: https://jonasmeneghelli97.github.io/Meu-Dashboard/
+   4. Depois de criado, copie o "Application (client) ID" e
+      cole abaixo em CLIENT_ID.
+   5. Em "API permissions", adicione Microsoft Graph →
+      Delegated permissions → Files.Read → Add permissions.
+   6. Pronto — não precisa de "client secret" nem de admin.
+   ============================================================ */
+
+const CLIENT_ID = "COLE_AQUI_O_APPLICATION_CLIENT_ID"; // <-- único valor que você precisa preencher
+const FILE_NAME = "Manutenção_e_Gastos_Frota.xlsx";
+const SHEET_NAME = "DASHBOARD";
+
+// Faixas exatas da planilha usadas pelo painel (não precisam mudar
+// a menos que você reorganize a aba DASHBOARD)
+const RANGES = {
+  kpis: "B6:S9",
+  table: "B12:K25",
+  status: "B27:C31"
+};
+
+let msalInstance = null;
+let graphAccount = null;
+
+function msalReady(){
+  return CLIENT_ID && CLIENT_ID.indexOf("COLE_AQUI") === -1;
+}
+
+async function initMsal(){
+  if(!msalReady()) return;
+  msalInstance = new msal.PublicClientApplication({
+    auth:{
+      clientId: CLIENT_ID,
+      authority: "https://login.microsoftonline.com/common",
+      redirectUri: window.location.href.split('#')[0]
+    },
+    cache:{ cacheLocation:"localStorage" }
+  });
+  await msalInstance.initialize();
+  const accounts = msalInstance.getAllAccounts();
+  if(accounts.length > 0){
+    graphAccount = accounts[0];
+    setSyncStatus('live','conectado — sincronizando…');
+    await syncFromExcel();
+    document.getElementById('refreshBtn').disabled = false;
+  }
+}
+
+async function getGraphToken(){
+  const request = { scopes:["Files.Read"], account: graphAccount };
+  try{
+    const res = await msalInstance.acquireTokenSilent(request);
+    return res.accessToken;
+  }catch(e){
+    const res = await msalInstance.acquireTokenPopup(request);
+    graphAccount = res.account;
+    return res.accessToken;
+  }
+}
+
+async function graphFetch(url, token){
+  const res = await fetch(url, { headers:{ Authorization:`Bearer ${token}` } });
+  if(!res.ok) throw new Error(`Graph API ${res.status}`);
+  return res.json();
+}
+
+async function syncFromExcel(){
+  try{
+    setSyncStatus('', 'sincronizando…');
+    const token = await getGraphToken();
+
+    // localizar o arquivo pelo nome no OneDrive do usuário conectado
+    const search = await graphFetch(
+      `https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(FILE_NAME)}')`,
+      token
+    );
+    if(!search.value || search.value.length === 0){
+      throw new Error("Planilha não encontrada no OneDrive desta conta");
+    }
+    const itemId = search.value[0].id;
+    const base = `https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/workbook/worksheets('${SHEET_NAME}')/range(address='`;
+
+    const [kpiRange, tableRange, statusRange] = await Promise.all([
+      graphFetch(`${base}${RANGES.kpis}')`, token),
+      graphFetch(`${base}${RANGES.table}')`, token),
+      graphFetch(`${base}${RANGES.status}')`, token)
+    ]);
+
+    const liveData = parseGraphRanges(kpiRange.values, tableRange.values, statusRange.values);
+    liveData.lastUpdate = new Date();
+    render(liveData);
+    setSyncStatus('live', `conectado — ao vivo (${liveData.lastUpdate.toLocaleTimeString('pt-BR')})`);
+  }catch(err){
+    console.error(err);
+    setSyncStatus('error', 'erro ao sincronizar — mostrando último dado conhecido');
+  }
+}
+
+// Converte os valores brutos das faixas do Excel para o formato do painel.
+// Os índices abaixo seguem exatamente o layout da aba DASHBOARD deste arquivo.
+function parseGraphRanges(kpiRows, tableRows, statusRows){
+  const kpis = {
+    gastoTotal: kpiRows[1][0],
+    totalLitros: kpiRows[1][3],
+    precoMedio: kpiRows[1][6],
+    numAbastecimentos: kpiRows[1][9],
+    frotaCadastrada: kpiRows[1][12],
+    manutencoesVencidas: kpiRows[1][15]
+  };
+  const vehicles = tableRows.slice(1).filter(r => r[0] && r[0] !== 'TOTAL FROTA').map(r => ({
+    placa:r[0], km:r[1], dieselL:r[2], dieselRS:r[3], arlaRS:r[5], outrosRS:r[6], totalRS:r[7], status:r[9]
+  }));
+  const colors = {'Em dia':'var(--ok)','Vencido':'var(--danger)','Em atenção':'var(--warn)','Sem KM informado':'var(--muted)'};
+  const statusBreakdown = statusRows.map(r => ({label:r[0], qty:r[1], color: colors[r[0]] || 'var(--muted)'}));
+  return {kpis, vehicles, statusBreakdown};
+}
+
+function setSyncStatus(kind, text){
+  const dot = document.getElementById('syncDot');
+  dot.className = 'dot' + (kind ? ' '+kind : '');
+  document.getElementById('syncText').textContent = text;
+}
+
+/* ============================================================
+   3) RENDERIZAÇÃO — mesma função usada tanto para os dados
+   locais quanto para os dados ao vivo vindos do Graph.
+   ============================================================ */
+const fmtBRL = n => (n ?? 0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+const fmtNum = n => (n ?? 0).toLocaleString('pt-BR');
+
+function statusClass(status){
+  if(status === 'OK') return 'status-ok';
+  if(status === 'Trocar agora' || status === 'Vencido') return 'status-danger';
+  return 'status-warn';
+}
+
+function render(data){
+  // KPIs
+  const k = data.kpis;
+  document.getElementById('kpiRow').innerHTML = `
+    <div class="kpi"><div class="label">Gasto total da frota</div><div class="value">${fmtBRL(k.gastoTotal)}</div><div class="foot">inclui outros gastos no filtro atual</div></div>
+    <div class="kpi"><div class="label">Total de litros</div><div class="value">${fmtNum(k.totalLitros)}<small>L</small></div><div class="foot">diesel + arla</div></div>
+    <div class="kpi"><div class="label">Preço médio / litro</div><div class="value">${fmtBRL(k.precoMedio)}</div><div class="foot">combustível (diesel)</div></div>
+    <div class="kpi"><div class="label">Nº de abastecimentos</div><div class="value">${fmtNum(k.numAbastecimentos)}</div><div class="foot">no filtro atual</div></div>
+    <div class="kpi"><div class="label">Frota cadastrada</div><div class="value">${fmtNum(k.frotaCadastrada)}<small>veículos</small></div><div class="foot">situação atual</div></div>
+    <div class="kpi ${k.manutencoesVencidas > 0 ? 'danger':''}"><div class="label">Manutenções vencidas</div><div class="value">${fmtNum(k.manutencoesVencidas)}</div><div class="foot">verificar aba PAINEL</div></div>
+  `;
+
+  // Tabela
+  const rows = [...data.vehicles].sort((a,b)=>b.totalRS-a.totalRS);
+  document.getElementById('vehicleRows').innerHTML = rows.map(v => `
+    <tr>
+      <td class="plate">${v.placa}</td>
+      <td>${fmtNum(v.km)}</td>
+      <td>${fmtNum(v.dieselL)}</td>
+      <td>${fmtBRL(v.dieselRS)}</td>
+      <td>${fmtBRL(v.arlaRS)}</td>
+      <td>${fmtBRL(v.outrosRS)}</td>
+      <td>${fmtBRL(v.totalRS)}</td>
+      <td><span class="status-chip ${statusClass(v.status)}">${v.status}</span></td>
+    </tr>
+  `).join('');
+
+  const totals = data.vehicles.reduce((acc,v)=>{
+    acc.dieselL += v.dieselL; acc.dieselRS += v.dieselRS; acc.arlaRS += v.arlaRS;
+    acc.outrosRS += v.outrosRS; acc.totalRS += v.totalRS;
+    return acc;
+  }, {dieselL:0,dieselRS:0,arlaRS:0,outrosRS:0,totalRS:0});
+  document.getElementById('vehicleFoot').innerHTML = `
+    <tr>
+      <td>TOTAL FROTA</td><td></td>
+      <td>${fmtNum(totals.dieselL)}</td>
+      <td>${fmtBRL(totals.dieselRS)}</td>
+      <td>${fmtBRL(totals.arlaRS)}</td>
+      <td>${fmtBRL(totals.outrosRS)}</td>
+      <td>${fmtBRL(totals.totalRS)}</td>
+      <td></td>
+    </tr>
+  `;
+
+  // Donut de status
+  renderDonut(data.statusBreakdown);
+
+  // Top gastos
+  const top = rows.slice(0,6);
+  const max = top[0] ? top[0].totalRS : 1;
+  document.getElementById('topSpenders').innerHTML = top.map(v => `
+    <div class="bar-row">
+      <div class="bar-label"><span>${v.placa}</span><span class="v">${fmtBRL(v.totalRS)}</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(v.totalRS/max*100).toFixed(1)}%"></div></div>
+    </div>
+  `).join('');
+
+  document.getElementById('lastUpdate').textContent = data.lastUpdate
+    ? data.lastUpdate.toLocaleString('pt-BR')
+    : 'dados de exemplo (não sincronizado)';
+}
+
+function renderDonut(breakdown){
+  const total = breakdown.reduce((s,b)=>s+b.qty,0) || 1;
+  const r = 46, cx=60, cy=60, circumference = 2*Math.PI*r;
+  let offset = 0;
+  const rgb = c => getComputedStyle(document.documentElement).getPropertyValue(c.replace('var(','').replace(')','')) || c;
+  let svg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#20252a" stroke-width="14"/>`;
+  breakdown.forEach(b=>{
+    const frac = b.qty/total;
+    const len = frac*circumference;
+    const color = b.color.startsWith('var(') ? getComputedStyle(document.body).getPropertyValue(b.color.slice(4,-1)) : b.color;
+    svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="14"
+      stroke-dasharray="${len} ${circumference-len}" stroke-dashoffset="${-offset}"
+      transform="rotate(-90 ${cx} ${cy})" stroke-linecap="butt"/>`;
+    offset += len;
+  });
+  document.getElementById('donut').innerHTML = svg;
+
+  document.getElementById('statusLegend').innerHTML = breakdown.map(b=>{
+    const color = b.color.startsWith('var(') ? getComputedStyle(document.body).getPropertyValue(b.color.slice(4,-1)) : b.color;
+    return `<div class="legend-item"><span class="legend-swatch" style="background:${color}"></span>${b.label}<span class="n">${b.qty}</span></div>`;
+  }).join('');
+}
+
+/* ============================================================
+   4) INICIALIZAÇÃO
+   ============================================================ */
+document.getElementById('connectBtn').addEventListener('click', async ()=>{
+  if(!msalReady()){
+    alert('Antes de conectar, preencha CLIENT_ID no código (veja as instruções nos comentários do arquivo).');
+    return;
+  }
+  try{
+    setSyncStatus('','conectando…');
+    const res = await msalInstance.loginPopup({ scopes:["Files.Read"] });
+    graphAccount = res.account;
+    document.getElementById('refreshBtn').disabled = false;
+    await syncFromExcel();
+  }catch(e){
+    console.error(e);
+    setSyncStatus('error','falha ao conectar');
+  }
+});
+
+document.getElementById('refreshBtn').addEventListener('click', syncFromExcel);
+
+render(FALLBACK_DATA);
+initMsal();
+
+// auto-atualiza a cada 5 minutos quando conectado
+setInterval(()=>{ if(graphAccount) syncFromExcel(); }, 5*60*1000);
+</script>
+</body>
+</html>
