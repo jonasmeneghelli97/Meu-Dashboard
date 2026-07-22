@@ -352,6 +352,7 @@ const FALLBACK_DATA = {
     {label:'Em atenção', qty:0, color:'var(--warn)'},
     {label:'Sem KM informado', qty:11, color:'var(--muted)'}
   ],
+  fills: [],
   lastUpdate: null
 };
 
@@ -387,7 +388,8 @@ const SHEET_NAME = "DASHBOARD";
 const RANGES = {
   kpis: "B6:S9",
   table: "B12:K25",
-  status: "B27:C31"
+  status: "B24:C35",
+  abastecimento: "B8:K300"
 };
 
 let msalInstance = null;
@@ -469,13 +471,14 @@ async function syncFromExcel(){
     const itemId = await findWorkbookItemId(token);
     const base = `https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/workbook/worksheets('${SHEET_NAME}')/range(address='`;
 
-    const [kpiRange, tableRange, statusRange] = await Promise.all([
+    const [kpiRange, tableRange, statusRange, abastRange] = await Promise.all([
       graphFetch(`${base}${RANGES.kpis}')`, token),
       graphFetch(`${base}${RANGES.table}')`, token),
-      graphFetch(`${base}${RANGES.status}')`, token)
+      graphFetch(`${base}${RANGES.status}')`, token),
+      graphFetch(`https://graph.microsoft.com/v1.0/me/drive/items/${itemId}/workbook/worksheets('ABASTECIMENTO')/range(address='${RANGES.abastecimento}')`, token)
     ]);
 
-    const liveData = parseGraphRanges(kpiRange.values, tableRange.values, statusRange.values);
+    const liveData = parseGraphRanges(kpiRange.values, tableRange.values, statusRange.values, abastRange.values);
     liveData.lastUpdate = new Date();
     render(liveData);
     setSyncStatus('live', `conectado — ao vivo (${liveData.lastUpdate.toLocaleTimeString('pt-BR')})`);
@@ -485,9 +488,20 @@ async function syncFromExcel(){
   }
 }
 
-// Converte os valores brutos das faixas do Excel para o formato do painel.
-// Os índices abaixo seguem exatamente o layout da aba DASHBOARD deste arquivo.
-function parseGraphRanges(kpiRows, tableRows, statusRows){
+function excelSerialToDate(v){
+  if(v instanceof Date) return v;
+  if(typeof v === 'string'){
+    const d = new Date(v);
+    if(!isNaN(d)) return d;
+  }
+  if(typeof v === 'number'){
+    // Excel guarda datas como nº de dias desde 30/12/1899
+    return new Date(Date.UTC(1899,11,30) + v*86400000);
+  }
+  return null;
+}
+
+function parseGraphRanges(kpiRows, tableRows, statusRows, abastRows){
   const kpis = {
     gastoTotal: kpiRows[1][0],
     totalLitros: kpiRows[1][3],
@@ -500,8 +514,24 @@ function parseGraphRanges(kpiRows, tableRows, statusRows){
     placa:r[0], km:r[1], dieselL:r[2], dieselRS:r[3], arlaRS:r[5], outrosRS:r[6], totalRS:r[7], status:r[9]
   }));
   const colors = {'Em dia':'var(--ok)','Vencido':'var(--danger)','Em atenção':'var(--warn)','Sem KM informado':'var(--muted)'};
-  const statusBreakdown = statusRows.map(r => ({label:r[0], qty:r[1], color: colors[r[0]] || 'var(--muted)'}));
-  return {kpis, vehicles, statusBreakdown};
+  const statusBreakdown = statusRows
+    .filter(r => r[0] && colors.hasOwnProperty(r[0]) && typeof r[1] === 'number')
+    .map(r => ({label:r[0], qty:r[1], color: colors[r[0]]}));
+
+  // Abastecimentos individuais (com data) — linha de cabeçalho é a primeira do range
+  const fills = abastRows.slice(1)
+    .filter(r => typeof r[0] === 'number' && r[1] && r[2])
+    .map(r => ({
+      placa: r[1],
+      date: excelSerialToDate(r[2]),
+      km: r[3],
+      litros: r[4],
+      valorLitro: r[5],
+      valorTotal: r[6]
+    }))
+    .filter(f => f.date);
+
+  return {kpis, vehicles, statusBreakdown, fills};
 }
 
 function setSyncStatus(kind, text){
@@ -523,11 +553,83 @@ function statusClass(status){
   return 'status-warn';
 }
 
+let CURRENT_DATA = null;
+
+function monthKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+function monthLabel(key){
+  const [y,m] = key.split('-').map(Number);
+  const d = new Date(y, m-1, 1);
+  const s = d.toLocaleDateString('pt-BR', {month:'long', year:'numeric'});
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function buildMonthOptions(fills){
+  const sel = document.getElementById('monthFilter');
+  const prev = sel.value;
+  const keys = [...new Set((fills||[]).map(f => monthKey(f.date)))].sort().reverse();
+  sel.innerHTML = `<option value="Todos">Filtrar por mês: Todos</option>` +
+    keys.map(k => `<option value="${k}">Filtrar por mês: ${monthLabel(k)}</option>`).join('');
+  if(keys.includes(prev)) sel.value = prev;
+}
+
+function buildView(data, selectedMonth){
+  if(!selectedMonth || selectedMonth === 'Todos' || !data.fills || data.fills.length === 0){
+    return data;
+  }
+  const filtered = data.fills.filter(f => monthKey(f.date) === selectedMonth);
+  const byPlaca = {};
+  filtered.forEach(f => {
+    if(!byPlaca[f.placa]) byPlaca[f.placa] = {litros:0, dieselRS:0, km:f.km};
+    byPlaca[f.placa].litros += f.litros;
+    byPlaca[f.placa].dieselRS += f.valorTotal;
+    if(f.km > byPlaca[f.placa].km) byPlaca[f.placa].km = f.km;
+  });
+  const vehicles = Object.keys(byPlaca).map(placa => {
+    const original = data.vehicles.find(v => v.placa === placa) || {};
+    return {
+      placa,
+      km: byPlaca[placa].km,
+      dieselL: byPlaca[placa].litros,
+      dieselRS: byPlaca[placa].dieselRS,
+      arlaRS: 0, outrosRS: 0,
+      totalRS: byPlaca[placa].dieselRS,
+      status: original.status || '—'
+    };
+  });
+  const totalLitros = filtered.reduce((s,f)=>s+f.litros,0);
+  const gastoTotal = filtered.reduce((s,f)=>s+f.valorTotal,0);
+  return {
+    kpis: {
+      gastoTotal,
+      totalLitros,
+      precoMedio: totalLitros ? gastoTotal/totalLitros : 0,
+      numAbastecimentos: filtered.length,
+      frotaCadastrada: data.kpis.frotaCadastrada,
+      manutencoesVencidas: data.kpis.manutencoesVencidas
+    },
+    vehicles,
+    statusBreakdown: data.statusBreakdown,
+    lastUpdate: data.lastUpdate,
+    filteredByMonth: true
+  };
+}
+
 function render(data){
+  CURRENT_DATA = data;
+  buildMonthOptions(data.fills);
+  renderView(buildView(data, document.getElementById('monthFilter').value));
+}
+
+document.getElementById('monthFilter').addEventListener('change', () => {
+  if(CURRENT_DATA) renderView(buildView(CURRENT_DATA, document.getElementById('monthFilter').value));
+});
+
+function renderView(data){
   // KPIs
   const k = data.kpis;
+  const gastoFoot = data.filteredByMonth ? 'total de diesel no mês (arla/outros só na visão "Todos")' : 'inclui outros gastos no filtro atual';
   document.getElementById('kpiRow').innerHTML = `
-    <div class="kpi"><div class="label">Gasto total da frota</div><div class="value">${fmtBRL(k.gastoTotal)}</div><div class="foot">inclui outros gastos no filtro atual</div></div>
+    <div class="kpi"><div class="label">Gasto total da frota</div><div class="value">${fmtBRL(k.gastoTotal)}</div><div class="foot">${gastoFoot}</div></div>
     <div class="kpi"><div class="label">Total de litros</div><div class="value">${fmtNum(k.totalLitros)}<small>L</small></div><div class="foot">diesel + arla</div></div>
     <div class="kpi"><div class="label">Preço médio / litro</div><div class="value">${fmtBRL(k.precoMedio)}</div><div class="foot">combustível (diesel)</div></div>
     <div class="kpi"><div class="label">Nº de abastecimentos</div><div class="value">${fmtNum(k.numAbastecimentos)}</div><div class="foot">no filtro atual</div></div>
