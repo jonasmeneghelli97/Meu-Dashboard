@@ -479,8 +479,6 @@ async function syncFromExcel(){
     ]);
 
     const liveData = parseGraphRanges(kpiRange.values, tableRange.values, statusRange.values, abastRange.values);
-    window.DEBUG_ABAST = abastRange.values;
-    console.log('DEBUG abastRange.values:', abastRange.values);
     liveData.lastUpdate = new Date();
     render(liveData);
     setSyncStatus('live', `conectado — ao vivo (${liveData.lastUpdate.toLocaleTimeString('pt-BR')})`);
