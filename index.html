@@ -314,7 +314,7 @@
   Última atualização: <span id="lastUpdate">—</span> · Dados sincronizados a partir do Excel Online via Microsoft Graph
 </footer>
 
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/lib/msal-browser.min.js"></script>
 <script>
 /* ============================================================
    1) DADOS LOCAIS (snapshot atual da planilha, usado como
@@ -398,6 +398,10 @@ function msalReady(){
 
 async function initMsal(){
   if(!msalReady()) return;
+  if(typeof msal === 'undefined'){
+    setSyncStatus('error','biblioteca da Microsoft não carregou — recarregue a página');
+    return;
+  }
   msalInstance = new msal.PublicClientApplication({
     auth:{
       clientId: CLIENT_ID,
@@ -595,6 +599,10 @@ function renderDonut(breakdown){
 document.getElementById('connectBtn').addEventListener('click', async ()=>{
   if(!msalReady()){
     alert('Antes de conectar, preencha CLIENT_ID no código (veja as instruções nos comentários do arquivo).');
+    return;
+  }
+  if(typeof msal === 'undefined'){
+    alert('A biblioteca da Microsoft ainda não carregou. Recarregue a página (F5) e tente de novo em alguns segundos.');
     return;
   }
   try{
